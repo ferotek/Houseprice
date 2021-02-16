@@ -1,0 +1,156 @@
+\documentclass{article}
+
+\usepackage[left=1in,top=1in,right=1in,bottom=1in,papersize={8.5in,11in},portrait,twoside=true]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+
+\textbf{Bagging and Random Forests}
+\begin{enumerate}[label=(\alph*)]
+\item We decided to use bagging to improve the model and consider all available predictors, as wanted to reduce the potential variance of the prediction by averaging a set of predictions using the bootstrap method. We first used a full model with 500 trees and 24 variables at each split to avoid overfit. The bagging model took the most commonly occurring prediction  from the decision trees. We cross validated it to the split training data, and the MSE was an improvement over the linear model (92000). To try to improve the model, we increased the number of trees to 1000 and  but the MSE wasn't that much better 91000. We concluded that there would not be a significant increase in changing the parameters of the bagging model.  
+
+\item After this, we decided to use the random forests model, since it could improve bagged trees by a modification that un-correlates the trees and consider a subset of predictors. We also used a full model with 500 trees and 8 variables at each split to avoid overfit.  The random forests worked better than the linear model, as we cross validated it to the split training data, but the MSE was still pretty high at around 90,000. The MSE was slightly better from random forest (around 89000). After increasing the trees to 1000, the MSE came out to 88400, which wasn’t that much better, so we decided to use the boosting model to improve our score.
+\end{enumerate}
+
+
+
+\begin{enumerate}[label=(\alph*)]
+\item
+<<echo=TRUE,comment=NA, background="#FFFFFF", warning=FALSE, message=FALSE>>=  
+test <- read.csv("/Volumes/BOOTCAMP/Users/David/Downloads/test.csv", stringsAsFactors=FALSE)
+train <- read.csv("/Volumes/BOOTCAMP/Users/David/Downloads/train.csv", stringsAsFactors=FALSE)
+
+
+
+
+
+
+
+
+################## Recode the variable range
+train$range[which(levels(train$range)=="74")]<-"73"
+train$range<-factor(train$range)
+test$range<-factor(test$range)
+###############################
+
+
+
+
+#section
+train$section<-factor(train$section)
+test$section<-factor(test$section)
+
+#township
+train$township<-factor(train$township)
+test$township<-factor(test$township)
+
+#designCodeDscr
+train$designCodeDscr<-factor(train$designCodeDscr)
+test$designCodeDscr<-factor(test$designCodeDscr)
+
+
+#############################Recode variable qualityCodeDscr
+train$qualityCodeDscr<-as.character(train$qualityCodeDscr)
+train$qualityCodeDscr[train$qualityCodeDscr %in% c(" EXCELLENT", "EXCELLENT +",
+                                                   "EXCELLENT++","EXCEPTIONAL 1",
+                                                   "EXCEPTIONAL 2","EXCEPTIONAL 3",
+                                                   "FAIR"," GOOD +"," GOOD ++ ","LOW"
+                                                   ,"VERY GOOD +","VERY GOOD ++ ")]<-"OTHER"
+#Convert back into factor
+train$qualityCodeDscr<-factor(train$qualityCodeDscr)
+
+#Doing the same on the Test data set  
+test$qualityCodeDscr[test$qualityCodeDscr %in% c(" EXCELLENT", "EXCELLENT +",
+                                                 " EXCELLENT++ ","EXCEPTIONAL 1",
+                                                 "EXCEPTIONAL 2","EXCEPTIONAL 3",
+                                                 "FAIR"," GOOD +"," GOOD ++ ","LOW"
+                                                 ,"VERY GOOD +","VERY GOOD ++ ")]<-"OTHER"
+test$qualityCodeDscr<-factor(test$qualityCodeDscr)
+##########################################################################################
+
+####### Recode the variable ConstCodeDscr
+train$ConstCodeDscr[train$ConstCodeDscr %in% c("PRECAST","BLOCK","STRAWBALE","
+                                               VENEER","WOOD","STEEL",
+                                               "STUD-STUCCO","CONCRETE",
+                                               "UNKNOWN","VENEER","WOOD")]<-"OTHERS"
+test$ConstCodeDscr[test$ConstCodeDscr %in% c("UNKNOWN")]<-"OTHERS"
+
+train$ConstCodeDscr<-factor(train$ConstCodeDscr)
+test$ConstCodeDscr<-factor(test$ConstCodeDscr)
+#############
+
+for (i in 1:nrow(train))
+{
+  if (train$landUnitValue[i]<50)
+  {
+    train$landUnitValue[i]<-train$landUnitValue[i]*43560
+  }
+  else {train$landUnitValue[i]<-train$landUnitValue[i]}
+}
+
+
+for (i in 1:nrow(test))
+{
+  if (test$landUnitValue[i]<50)
+  {
+    test$landUnitValue[i]<-test$landUnitValue[i]*43560
+  }
+  else {test$landUnitValue[i]<-test$landUnitValue[i]}
+}
+
+train[which(train$landUnitType=="AC"),"landUnitValue"]<-train[which
+                                          (train$landUnitType=="AC"),"landUnitValue"]*43560
+test[which(test$landUnitType=="AC"),"landUnitValue"]=test[
+  which(test$landUnitType=="AC"),"landUnitValue"]*43560
+
+#Subset the useful variables 
+newdata<-train[,c("totalActualVal","nh","section","range",
+                  "builtYear","mill_levy","designCodeDscr",
+                  "taxArea","CompCode","ConstCodeDscr",
+                  "qualityCodeDscr","bsmtSF","carStorageSF","nbrBedRoom",
+                  "GIS_sqft","mainfloorSF","TotalFinishedSF","Shape_Leng","landUnitValue",
+                  "Shape_Area","PCT_WHITE","PCT_BLACK","PCT_ASIAN","PCT_HISP")]
+
+
+set.seed(123)
+train2<-sample(1:87462,10000)
+train1<-newdata[train2,]
+row.names(train1)<-1:nrow(train1)
+#cor<-cor(train1[sapply(train1,is.numeric)],use="pairwise.complete.obs")
+@
+
+\item 
+<<echo=TRUE,comment=NA, background="#FFFFFF", warning=FALSE, message=FALSE>>=  
+#Bagging model
+library(randomForest)
+set.seed(1)
+bag.model<-randomForest(totalActualVal~.,data=newdata,mtry=28,ntree=500,nodesize=10,
+                        importance=TRUE,subset=train2)
+yhat.bag<-predict(bag.model,newdata=train[-train2,])
+sqrt(mean((yhat.bag-train$totalActualVal[-train2])^2))
+bag.model
+importance (bag.model)
+varImpPlot (bag.model)
+
+
+
+#RandomForest(Doesnot work)
+set.seed(1)
+RF.model<-randomForest(totalActualVal~.,data=newdata,importance=TRUE,
+                       ntree=100,nodesize=10,subset=train2)
+yhat.RF<-predict(RF.model,newdata=train[-train2,])
+sqrt(mean((yhat.RF-train$totalActualVal[-train2])^2))
+RF.model
+importance (RF.model)
+varImpPlot (RF.model)
+
+@
+
+
+\end{enumerate}
+
+
+\end{document}
